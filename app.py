@@ -30,13 +30,66 @@ redis_client = redis.Redis(host='127.0.0.1', port=6379, db=0)
 @app.route("/")
 def index():
     return render_template_string("""
-    <h1>Flask Celery Demo</h1>
-    <p> Try triggering some tasks and check the logs</p>
-    <ul>
-        <li><a href="{{ url_for('add_task') }}">Trigger Add Task</a></li>
-        <li><a href="{{ url_for('long_running_task') }}">Trigger Long Running Task</a></li>
-        <li><a href="{{ url_for('unreliable_task') }}">Trigger Unreliable Task</a></li>
-    </ul>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Flask Celery SSE Demo</title>
+        <style>
+            body { font-family: sans-serif; margin: 20px; }
+            .task-list { border: 1px solid #ccc; padding: 10px; min-height: 100px; max-height: 400px; overflow-y: scroll; background-color: #f9f9f9; }
+            .task-item { padding: 5px 0; border-bottom: 1px dotted #eee; }
+            .task-item:last-child { border-bottom: none; }
+            .status-SUCCESS { color: green; font-weight: bold; }
+            .status-FAILURE { color: red; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h1>Flask Celery SSE Demo</h1>
+        <p>Trigger tasks and watch updates appear in real-time below!</p>
+        <ul>
+            <li><a href="{{ url_for('add_task') }}">Trigger Add Task (4 + 6)</a></li>
+            <li><a href="{{ url_for('long_running_task') }}">Trigger Long Running Task (5s)</a></li>
+            <li><a href="{{ url_for('unreliable_task') }}">Trigger Unreliable Task (may fail/retry)</a></li>
+        </ul>
+
+        <h2>Task Updates (Real-time via SSE)</h2>
+        <div id="taskUpdates" class="task-list">
+            <p>Waiting for task updates...</p>
+        </div>
+
+        <script>
+            const eventSource = new EventSource('/stream');
+            const taskUpdatesDiv = document.getElementById('taskUpdates');
+
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                const p = document.createElement('p');
+                p.className = 'task-item';
+                let statusClass = '';
+                if (data.status) {
+                    statusClass = 'status-' + data.status;
+                }
+                p.innerHTML = `<strong>Task ID:</strong> ${data.task_id} <br> 
+                               <strong>Task Name:</strong> ${data.task_name} <br>
+                               <strong>Status:</strong> <span class="${statusClass}">${data.status || 'UNKNOWN'}</span> <br>
+                               <strong>Result:</strong> ${data.result || 'N/A'}`;
+                
+                if (taskUpdatesDiv.firstChild && taskUpdatesDiv.firstChild.tagName === 'P' && taskUpdatesDiv.firstChild.textContent === 'Waiting for task updates...') {
+                    taskUpdatesDiv.removeChild(taskUpdatesDiv.firstChild);
+                }
+                taskUpdatesDiv.prepend(p);
+            };
+
+            eventSource.onerror = function(err) {
+                console.error("EventSource failed:", err);
+                taskUpdatesDiv.innerHTML += '<p style="color: red;">Connection to task updates lost. Try refreshing.</p>';
+                eventSource.close();
+            };
+        </script>
+    </body>
+    </html>
     """)
 
 @app.route("/add-task")
